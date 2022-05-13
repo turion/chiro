@@ -9,12 +9,24 @@ import Data.Foldable (fold)
 data Chiro k a
   = Empty
   | Single a
-  | Tree
+  | TreeH -- FIXME Refactor as separate type TreeH
     { key :: k
     , left :: Digit a
     , deep :: Chiro k (Several k a)
     , right :: Digit a
     }
+  | TreeV
+    { key :: k
+    , up :: Digit a
+    , deep :: Chiro k (Several k a)
+    , down :: Digit a
+    }
+
+transpose :: Chiro k a -> Chiro k a
+transpose Empty = Empty
+transpose (Single a) = Single a
+transpose TreeH { .. } = TreeV { deep = transpose deep, up = left, down = right, .. }
+transpose TreeV { .. } = TreeH { deep = transpose deep, left = up, right = down, .. }
 
 data Digit a
   = One a
@@ -51,52 +63,52 @@ instance Measure k a => Measure k (Several k a) where
 instance Measure k a => Measure k (Chiro k a) where
   measure Empty = mempty
   measure (Single a) = measure a
-  measure Tree { .. } = key
+  measure TreeH { .. } = key
 
 instance Measure k a => Semigroup (Chiro k a) where
   Empty <> chiro = chiro
 
   chiro <> Empty = chiro
 
-  Single valueL <> Single valueR = Tree
+  Single valueL <> Single valueR = TreeH
     { key = measure valueL <> measure valueR
     , left = One valueL
     , deep = Empty
     , right = One valueR
     }
 
-  Single value <> tree@Tree { left = One a, .. } = Tree
+  Single value <> tree@TreeH { left = One a, .. } = TreeH
     { key = key <> key
     , left = Two value a
     , ..
     }
 
-  Single value <> tree@Tree { left = Two a1 a2, .. } = Tree
+  Single value <> tree@TreeH { left = Two a1 a2, .. } = TreeH
     { key = key <> key
     , left = Three value a1 a2
     , ..
     }
 
-  Single value <> tree@Tree { left = Three a1 a2 a3, .. } = Tree
+  Single value <> tree@TreeH { left = Three a1 a2 a3, .. } = TreeH
     { key = key <> key
     , left = One value
     , deep = mkSThree a1 a2 a3 <| deep
     , ..
     }
 
-  Tree { right = One a, .. } <> Single value = Tree
+  TreeH { right = One a, .. } <> Single value = TreeH
     { key = key <> key
     , right = Two a value
     , ..
     }
 
-  Tree { right = Two a1 a2, .. } <> Single value = Tree
+  TreeH { right = Two a1 a2, .. } <> Single value = TreeH
     { key = key <> key
     , right = Three a1 a2 value
     , ..
     }
 
-  Tree { right = Three a1 a2 a3, .. } <> Single value = Tree
+  TreeH { right = Three a1 a2 a3, .. } <> Single value = TreeH
     { key = key <> key
     , right = One value
     , deep = deep |> mkSThree a1 a2 a3
@@ -104,7 +116,7 @@ instance Measure k a => Semigroup (Chiro k a) where
     }
 
 -- Not sure whether this is actually as performant as I need it
-  tleft@Tree { right = mergeR, left } <> tright@Tree { left = mergeL, right } = Tree
+  tleft@TreeH { right = mergeR, left } <> tright@TreeH { left = mergeL, right } = TreeH
     { key = key tleft <> key tright
     , deep = deep tleft <> mergeDigits mergeR mergeL <> deep tright
     , ..
@@ -125,7 +137,7 @@ instance Measure k a => Semigroup (Chiro k a) where
 -- glue tleft td@(DFour a1 a2 a3 a4) tright = tleft <> Single (mkSTwo a1 a2) <> Single (mkSTwo a1 a2) <> tright
 
 mkEmpty :: Measure k a => Several k a -> Several k a -> Chiro k (Several k a)
-mkEmpty sLeft sRight = Tree
+mkEmpty sLeft sRight = TreeH
   { key = measure sLeft <> measure sRight
   , deep = Empty
   , left = One sLeft
